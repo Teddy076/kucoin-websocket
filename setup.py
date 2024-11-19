@@ -2,7 +2,7 @@
 from setuptools import setup, find_namespace_packages
 
 # Long description
-with open("README.md", "r") as fh:
+with open("README.md", "r", encoding="utf8") as fh:
     long_description = fh.read()
 
 # Requirements
