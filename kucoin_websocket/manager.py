@@ -30,6 +30,8 @@ class KucoinWebSocket():
         self._backoff_factor = backoff_factor
         self._scheduler = BackgroundScheduler()
 
+        print('NEW WEBSOCKET')
+
 
     async def _recv(self, msg: dict) -> None:
         """ Mirror data messages to the callback """
@@ -53,6 +55,38 @@ class KucoinWebSocket():
             await asyncio.sleep(sub_wait)           # Sleep
             sub_wait *= self._backoff_factor        # Increase wait time for each subscription
             await self.subscribe_kline(market)      # Subscribe
+
+
+    async def subscribe_depth(self, market: str) -> None:
+        """ Subscribe to a channel """
+        await self._conn.send_message({
+            'type': 'subscribe',
+            'topic': f"/market/level2:{market}",
+            'response': True
+        })
+        #print('WS Subscribed to '+market)
+
+
+    async def subscribe_depth_bulk(self, markets: list) -> None:
+        """ Subscribe to a list of market channels with backoff_factor to keep congestion to a minimum """
+        sub_wait = 5                              # Start with 0.5 second wait
+        market_list = ''
+        market_count = 0
+        for market in markets:
+            market_count += 1
+            if market_count <= 90:
+                if market_list != '':
+                    market_list += ','
+                market_list += market
+            else:
+                await self.subscribe_depth(market_list)
+                market_list = ''
+                market_count = 0
+
+            # await asyncio.sleep(sub_wait)           # Sleep
+            # sub_wait *= self._backoff_factor        # Increase wait time for each subscription
+        if market_list != '':
+            await self.subscribe_depth(market_list)      # Subscribe
 
 
     async def unsubscribe_kline(self, topic: str) -> None:
@@ -92,8 +126,8 @@ class KucoinWebSocket():
     async def __main(self) -> None:
         """ Main event loop """
 
-        # Subscribe markets to Kline channels
-        await self.subscribe_kline_bulk(self._markets)
+        # Subscribe markets to depth channels
+        await self.subscribe_depth_bulk(self._markets)
 
         # Sleep to keep the event loop alive
         while True:
@@ -131,7 +165,24 @@ class KucoinWebSocketManager():
         self.refresh_hours = refresh_hours
         self.backoff_factor = backoff_factor
 
-        confs = {f"worker {i}": (self.create_websocket(markets[i * self.MAX_SUBS: (i + 1) * self.MAX_SUBS]).run, ()) for i in range(0, len(markets), self.MAX_SUBS)}
+        market_list = []
+        confs = {}
+        worker_count = 0
+        for market in markets:
+            if len(market_list) < self.MAX_SUBS:
+                market_list.append(market)
+            else:
+                worker_count += 1
+                print(f"Connexion WS {worker_count} avec {len(market_list)} markets")
+                confs[f"task {worker_count}"] = (self.create_websocket(market_list).run, ())
+                market_list = []
+        if len(market_list) > 0:
+            worker_count += 1
+            print(f"Connexion WS {worker_count} avec {len(market_list)} markets")
+            confs[f"task {worker_count}"] = (self.create_websocket(market_list).run, ())
+
+
+        # confs = {f"worker {i}": (self.create_websocket(markets[i * self.MAX_SUBS: (i + 1) * self.MAX_SUBS]).run, ()) for i in range(0, len(markets), self.MAX_SUBS)}
         self.thread_pool = ThreadPool(confs)
 
 
