@@ -5,8 +5,14 @@ import asyncio, time, json
 from typing import Callable
 from datetime import datetime
 
+# SSL
+import ssl
+import certifi
+
 # Third-party imports
 from .utils.base_request import BaseRequests
+
+
 
 
 class KuCoinWebSocketDetails():
@@ -65,7 +71,9 @@ class Websocket():
         self._conn = None
         self._last_ping = None
         self._socket = None
-
+        self.ssl_context = ssl.create_default_context()
+        self.ssl_context.load_verify_locations(certifi.where())
+        
         self.refresh_ws_details()   # Get a new token
         self._connect()             # Connect to the WebSocket
 
@@ -86,7 +94,7 @@ class Websocket():
         keep_waiting = True
         self._last_ping = time.time()  # record last ping
 
-        async with ws.connect(self.ws_endpoint, ssl = self._ws_details.encrypt) as socket:
+        async with ws.connect(self.ws_endpoint, ssl = self.ssl_context) as socket:
             self._socket = socket
             self._reconnect_attempts = 0
 
